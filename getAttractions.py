@@ -1,0 +1,80 @@
+import json
+import rauth
+import time
+import argparse
+import string
+import os
+from os.path import exists
+
+def get_search_parameters(lat,long):
+  #See the Yelp API for more details
+  params = {}
+  params["term"] = "restaurants,food"
+  params["location"] = "New York City"
+  params["cll"] = "{},{}".format(str(lat),str(long))
+  params["radius_filter"] = "100" #in meters
+  params["limit"] = "20"
+  params["sort"] = "0"
+#"1" distance
+#"0" most relevant results
+#"2" is by ratings, but uses bayesian average to determine rating score
+ 
+  return params
+
+def get_results(params):
+  #Obtain these from Yelp's manage access page
+  consumer_key = "rd4Vb8yNJTxSdIkSMh4bPg"
+  consumer_secret = "7CmecaHa1D_udTK1D6_YiZ8ghu8"
+  token = "DAEJbUY9UG8jH_XhJo0-Uq8GYzbHwrVo"
+  token_secret = "SdBs4eBCbBm1VKQcxpeQOR2Redk"
+   
+  session = rauth.OAuth1Session(consumer_key = consumer_key,consumer_secret = consumer_secret,
+				access_token = token,access_token_secret = token_secret)
+     
+  request = session.get("http://api.yelp.com/v2/search",params=params)
+   
+  #Transforms the JSON API response into a Python dictionary
+  data = request.json()
+  session.close()
+   
+  return data
+
+# lat = '40.755815', lon='-73.986428' is times square
+#locations = [(39.98,-82.98),(42.24,-83.61),(41.33,-89.13)]
+locations = [(40.755815,-73.986428),(40.755915,-73.986528),(40.71797,-73.954906)]
+api_calls = []
+eachIter = 0
+for lat,long in locations:
+    params = get_search_parameters(lat,long)
+    api_calls.append(get_results(params))
+    #Be a good internet citizen and rate-limit yourself
+    time.sleep(1.0)
+    eachIter = eachIter + 1
+    print "Got result for lat,long entry #", eachIter
+
+#each_call is a dictionary
+eachIter = 0
+listItem = 0
+for each_call in api_calls:
+    print "Call #", eachIter + 1, ":"
+    listItem = 0
+    for each_key in each_call:
+	#print "\tItem ", listItem + 1
+	if each_key == 'businesses':
+	    businesses = each_call[each_key]
+	    numBusiness = 0
+	    for each_business in businesses:
+		print "\t Business ", numBusiness+1, ": "
+		for each_field in each_business:
+		    print "\t\t", each_field, " : ", each_business[each_field]
+		print
+		numBusiness += 1
+	else:	 
+	    print "\t", each_key, " ", each_call[each_key]
+	listItem += 1
+	print
+    print "\t", each_call
+    eachIter += 1
+    print
+     
+  ##Do other processing
