@@ -63,18 +63,21 @@ def get_full_path(path, longestGraph):
     return np.vstack(p_list)
 
 def get_new_weight(longestGraph,path,maximum,minimum,f,resolution,levels,distance):
-    smallest_fraction = 1.0
+    smallest_fraction = 1000000.0
     total_fraction = 0.0
     smallest = abs(f.min())
     f = f + smallest
+    levels = levels + levels[0]
+    numLevels = len(levels)
+    last = numLevels-1
     for each_coord in path:
 	#print "   each_coordinate in path: ", each_coord
 	sloty = int( ((each_coord[1] - minimum[1]) / (maximum[1] - minimum[1])) * resolution )
 	slotx = int( ((each_coord[0] - minimum[0]) / (maximum[0] - minimum[0])) * resolution )
 	#if we're out of bounds, don't change the weight
 	if ( (slotx >= (resolution)) | (slotx < 0) ) | ( (sloty >= (resolution)) | (sloty < 0) ):
-	    if ((each_coord[1] < 37.84) & (each_coord[1] > 37.7) & (each_coord[0] > 122.05) & (each_coord[0] < 122.3)): 
-	    	print "coordinate ", each_coord, " in slot ", slotx, " ", sloty, " will not have a modded weight!"
+	    #if ((each_coord[1] < 37.84) & (each_coord[1] > 37.7) & (each_coord[0] > 122.05) & (each_coord[0] < 122.3)): 
+	    	#print "coordinate ", each_coord, " in slot ", slotx, " ", sloty, " will not have a modded weight!"
 	    total_fraction += 1
 	else:
 	    #templevels = np.array(levels)
@@ -85,7 +88,11 @@ def get_new_weight(longestGraph,path,maximum,minimum,f,resolution,levels,distanc
 	    #index = templevels.argmax()
 	    #current_fraction = 1.0 / ((index + 1.0) * 100.0)
 	    index = f[sloty][slotx]
-	    current_fraction = 1.0 / (math.pow(index + 1.0,3.0) * 100.0 )
+	    #make highly clustered areas with lighter weights, and not-as-highly clustered heavier weights
+	    if (index >= levels[last]):
+	        current_fraction = 1.0 / (math.pow((index/levels[last]) + 2.0,3.0) )
+	    else:
+   		current_fraction = math.pow((levels[last] / index) + 2.0, 3.0 )		
 	    if current_fraction < smallest_fraction:
 		smallest_fraction = current_fraction
 	    #total_fraction = total_fraction + ( 1.0 / (math.pow(index + 1.0,3.0)) )
@@ -103,52 +110,69 @@ mpl.rcParams['figure.dpi'] = mpl.rcParams['savefig.dpi'] = 300
 #G=osm.download_osm(-74.0252, 40.6983, -73.9064, 40.8891)
 #G = nx.read_shp("data/new-york_new-york_osm_roads.shp")
 G = pickle.load(open("data/pitt_g.pkl", "rb" ) )
-f = pickle.load(open("data/kernel.pkl", "rb" ) )
-resolution = pickle.load(open("data/resolution.pkl", "rb" ) )
-maximum = pickle.load(open("data/max.pkl", "rb" ) )
-minimum = pickle.load(open("data/min.pkl", "rb" ) )
-levels = pickle.load(open("data/levels.pkl", "rb" ) )
-points = pickle.load(open("data/points.pkl", "rb" ) )
+seasons = {0:'winter', 1:'spring', 2:'summer', 3:'fall'}
 
-print maximum
-print minimum
-print levels
-print f.shape
+#*********************************************
+for whichseason in range(0,4):
+    directory = "data/" + seasons[whichseason] + "/"
+    f = pickle.load(open(directory + "kernel.pkl", "rb" ) )
+    resolution = pickle.load(open(directory + "resolution.pkl", "rb" ) )
+    maximum = pickle.load(open(directory + "max.pkl", "rb" ) )
+    minimum = pickle.load(open(directory + "min.pkl", "rb" ) )
+    levels = pickle.load(open(directory + "levels.pkl", "rb" ) )
+    points = pickle.load(open(directory + "clusteredpoints.pkl", "rb" ) )
 
-#get the largest connected subgraph
-longestLength = 0
-allSubgraphs = list(nx.connected_component_subgraphs(G.to_undirected()))
-for graph in allSubgraphs:
-    currentLength = len(graph)
-    if currentLength > longestLength:
-	longestLength = currentLength
-	longestGraph = graph
+    print maximum
+    print minimum
+    print levels
+    print f.shape
 
-print len(longestGraph)
+    #get the largest connected subgraph
+    longestLength = 0
+    allSubgraphs = list(nx.connected_component_subgraphs(G.to_undirected()))
+    for graph in allSubgraphs:
+    	currentLength = len(graph)
+    	if currentLength > longestLength:
+	    longestLength = currentLength
+	    longestGraph = graph
 
-pos1 = (40.491616, -80.010195)
-#pos1 = (40.493989, -79.995309)
-pos0 = (40.456656, -79.939095)
+    print len(longestGraph)
 
-numModded = 0
-numNormal = 0
-# Compute the length of the road segments.
-for n0, n1 in longestGraph.edges_iter():
-    path = get_path(n0, n1, longestGraph)
-    distance = get_path_length(path)
-    longestGraph.edge[n0][n1]['distance'] = distance
-    longestGraph.edge[n0][n1]['changedDistance'] = get_new_weight(longestGraph,path,maximum,minimum,f,resolution,levels,distance)
-    if (longestGraph.edge[n0][n1]['changedDistance'] != distance):
-	numModded += 1
-    else:
-	numNormal += 1
+    #pos1 = (40.455763, -79.938615)
+    #pos1 = (40.444216, -79.966203)
+    #pos1 = (40.436941, -79.980789)
+    #pos1 = (40.440429, -79.988102)
+    #pos1 = (40.434896, -79.989431)
+    pos1 = (40.442899, -79.965823)
+    #pos0 = (40.4585706667, -80.0297088333)
+    #pos0 = (40.455703, -80.015191)
+    #pos0 = (40.442347, -80.007369)
+    #pos0 = (40.443432, -80.004672)
+    pos0 = (40.457242, -80.029383)
+    numModded = 0
+    numNormal = 0
+    # Compute the length of the road segments.
+    for n0, n1 in longestGraph.edges_iter():
+    	path = get_path(n0, n1, longestGraph)
+    	distance = get_path_length(path)
+    	longestGraph.edge[n0][n1]['distance'] = distance
+    	longestGraph.edge[n0][n1]['changedDistance'] = \
+	    get_new_weight(longestGraph,path,maximum,minimum,f,resolution,levels,distance)
+    	if (longestGraph.edge[n0][n1]['changedDistance'] != distance):
+	    numModded += 1
+    	else:
+	    numNormal += 1
 
-print "Modded weights: ", numModded, " non-modded: ", numNormal
+    print "Modded weights: ", numModded, " non-modded: ", numNormal
 
-with open("data/graphModdedWeights.pkl", 'wb') as file:
-    pickle.dump(longestGraph, file)
+    with open(directory + "graphModdedWeights.pkl", 'wb') as file:
+    	pickle.dump(longestGraph, file)
 
+longestGraphSummer = pickle.load(open("data/summer/graphModdedWeights.pkl", "rb" ) )
+longestGraphWinter = pickle.load(open("data/winter/graphModdedWeights.pkl", "rb" ) )
 nodes = np.array(longestGraph.nodes())
+winterNodes = np.array(longestGraphWinter.nodes())
+summerNodes = np.array(longestGraphSummer.nodes())
 # Get the closest nodes in the graph.
 pos0_i = np.argmin(np.sum((nodes[:,::-1] - pos0)**2, axis=1))
 pos1_i = np.argmin(np.sum((nodes[:,::-1] - pos1)**2, axis=1))
@@ -159,49 +183,78 @@ path = nx.shortest_path(longestGraph,
                         source=tuple(nodes[pos0_i]), 
                         target=tuple(nodes[pos1_i]),
                         weight='distance')
-changed_path = nx.shortest_path(longestGraph, 
+changed_path_summer = nx.shortest_path(longestGraphSummer, 
+                        source=tuple(nodes[pos0_i]), 
+                        target=tuple(nodes[pos1_i]),
+                        weight='changedDistance')
+changed_path_winter= nx.shortest_path(longestGraphWinter, 
                         source=tuple(nodes[pos0_i]), 
                         target=tuple(nodes[pos1_i]),
                         weight='changedDistance')
 
 print "Shortest path between points closest to ", pos0, " and ", pos1, " has ", len(path), " segments"
-print "Modded shortest path between points closest to ", pos0, " and ", pos1, " has ", len(changed_path), " segments"
+print "Summer shortest path between points closest to ", pos0, " and ", pos1, " has ", len(changed_path_summer), " segments"
+print "Winter modded shortest path between points closest to ", pos0, " and ", pos1, " has ", len(changed_path_winter), " segments"
 
 roads = pd.DataFrame([longestGraph.edge[path[i]][path[i + 1]] for i in range(len(path) - 1)], 
                      columns=['FULLNAME', 'MTFCC', 'RTTYP', 'distance'])
-changed_roads = pd.DataFrame([longestGraph.edge[changed_path[i]][changed_path[i + 1]] for i in range(len(changed_path) - 1)], 
+changed_roads_summer = pd.DataFrame([longestGraphSummer.edge[changed_path_summer[i]][changed_path_summer[i + 1]] for i in range(len(changed_path_summer) - 1)], 
                      columns=['FULLNAME', 'MTFCC', 'RTTYP', 'distance'])
+changed_roads_winter = pd.DataFrame([longestGraphWinter.edge[changed_path_winter[i]][changed_path_winter[i + 1]] for i in range(len(changed_path_winter) - 1)], 
+                     columns=['FULLNAME', 'MTFCC', 'RTTYP', 'distance'])
+
 
 print roads
 print "Distance of this shortest path: ", roads['distance'].sum()
 
-print changed_roads
-print "Distance of this changed shortest path: ", changed_roads['distance'].sum()
+print changed_roads_summer
+print "Distance of this changed shortest path in autumn: ", changed_roads_summer['distance'].sum()
+
+print changed_roads_winter
+print "Distance of this changed shortest path in spring: ", changed_roads_winter['distance'].sum()
 
 
+min = min(pos0,pos1)
+max = max(pos0,pos1)
 #map = smopy.Map(pos0, pos1, z=13, margin=.1)
-map = smopy.Map(pos0, pos1, z=12, margin=0.4)
+map = smopy.Map((min[0],min[1]), (max[0],max[1]), z=12, margin=0.1)
 #convert path to pixels to display it on Smopy map
 linepath = get_full_path(path, longestGraph)
-linechangedpath = get_full_path(changed_path, longestGraph)
+linechangedsummerpath = get_full_path(changed_path_summer, longestGraphSummer)
+linechangedwinterpath = get_full_path(changed_path_winter, longestGraphWinter)
 
 print linepath
 with open("data/pathCoords.pkl", 'wb') as file:
     pickle.dump(linepath, file)
 
 x, y = map.to_pixels(linepath[:,1], linepath[:,0])
-xchange, ychange = map.to_pixels(linechangedpath[:,1], linechangedpath[:,0])
+xchangesummer, ychangesummer = map.to_pixels(linechangedsummerpath[:,1], linechangedsummerpath[:,0])
+xchangewinter, ychangewinter = map.to_pixels(linechangedwinterpath[:,1], linechangedwinterpath[:,0])
 
 #plt.figure(figsize=(6,6));
 map.show_mpl();
 
-lons, lats = map.to_pixels(points[:,1], points[:,0])
-plt.plot(lons, lats, ',m');
+summerpoints = pickle.load(open("data/summer/clusteredpoints.pkl", "rb" ) )
+winterpoints = pickle.load(open("data/winter/clusteredpoints.pkl", "rb" ) )
+thepoints = points[points['Season'] == 3][['Longitude', 'Latitude']].values
+thesummerpoints = summerpoints[summerpoints['Season'] == 2][['Longitude', 'Latitude']].values
+thewinterpoints = winterpoints[winterpoints['Season'] == 0][['Longitude', 'Latitude']].values
+summerlons, summerlats = map.to_pixels(thesummerpoints[:,1], thesummerpoints[:,0])
+winterlons, winterlats = map.to_pixels(thewinterpoints[:,1], thewinterpoints[:,0])
+plt.plot(summerlons, summerlats, '.r', alpha = 0.4, label = "Fall points");
+plt.plot(winterlons, winterlats, '.b', alpha = 0.4, label = "Winter points");
 # Plot the itinerary.
-plt.plot(x, y, '-k', lw=1.5);
-plt.plot(xchange, ychange, '-g', lw=1.5);
+plt.plot(x, y, '-k', lw=1.0, alpha = 0.7, label = "Shortest path");
+plt.plot(xchangesummer, ychangesummer, '-r', lw=1.0, alpha = 0.7, label = "Summer path");
+plt.plot(xchangewinter, ychangewinter, '-b', lw=1.0, alpha = 0.7, label = "Winter path");
 # Mark our two positions.
-plt.plot(x[0], y[0], 'ob', ms=5);
-plt.plot(x[-1], y[-1], 'or', ms=5);
+plt.plot(x[0], y[0], 'ow', ms=5);
+plt.plot(x[-1], y[-1], 'ok', ms=5);
+
+plt.legend(loc=2,prop={'size':4})
+#leg = plt.gca().get_legend()
+#ltext  = leg.get_texts()  # all the text.Text instance in the legend
+#plt.setp(ltext, fontsize='small') 
+
 
 plt.show()

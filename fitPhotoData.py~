@@ -7,122 +7,145 @@ from sklearn.neighbors.kde import KernelDensity
 import pickle
 import smopy
 import dbscanning
+import math
+
+
+def date_extract(date_taken):
+    return date_taken.split(' ')[0].strip()
+
+def time_extract(date_taken):
+    return date_taken.split(' ')[1].strip()
+
+def month_extract(date_taken):
+    return int(date_taken.split(' ')[0].split('-')[1])
+
+def day_extract(date_taken):
+    return int(date_taken.split(' ')[0].split('-')[2])
+
+def year_extract(date_taken):
+    return int(date_taken.split(' ')[0].split('-')[0])
+
+def season_extract(date_taken):
+    #return season as winter=0, spring = 1, summer = 2, fall = 3
+    month = int(date_taken.split(' ')[0].split('-')[1])
+    day = int(date_taken.split(' ')[0].split('-')[2])
+    #determine the season of date_taken based on equinoxes and solstices
+    #spring = March 20, summer = June 21, autumnal = September 22, winter = December 21
+    if (month < 3) | ((month == 3) & (day < 20)):
+	return 0
+    elif ((month == 3) & (day >= 20)) | ((month > 3) & (month < 6)) | ((month == 6) & (day < 21)):
+	return 1
+    elif ((month == 6) & (day >= 21)) | ((month > 6) & (month < 9)) | ((month == 9) & (day < 22)):
+	return 2
+    elif ((month == 9) & (day >= 22)) | ((month > 9) & (month < 12)) | ((month == 12) & (day < 21)):
+	return 3
+    elif ((month == 12) & (day >= 21)):
+	return 0
 
 cnxn = MySQLdb.connect("localhost","root","golgo13","picturesdb") 
 cursor = cnxn.cursor()
 sql = "SELECT * FROM PhotosPittsburgh"
 
 allData = pd.read_sql(sql, cnxn)
-#someSanFranData = allSanFranData[allSanFranData['Longitude'] ]['all features']
 print "Read the data from SQL"
 
+allData['Season'] = allData['DateTaken'].apply(season_extract)
+seasons = {0:'winter', 1:'spring', 2:'summer', 3:'fall'}
 
-points = allData[['Longitude', 'Latitude']].values
+#*********************************************
+for whichseason in range(0,5):
+    if whichseason==4:
+	print allData[['Longitude', 'Latitude']].describe()
+    	#points = allData[['Longitude', 'Latitude']].values
+	points = allData
+    else:
+    	print allData[allData['Season'] == whichseason][['Longitude', 'Latitude']].describe()
+    	#points = allData[allData['Season'] == whichseason][['Longitude', 'Latitude']].values
+	points = allData[allData['Season'] == whichseason]
 
-print points
+    clusteredPoints = dbscanning.display_clusters(points, 0)
+    print clusteredPoints.describe()
+    #print clusteredPoints.groupby('Cluster').mean()
+    print clusteredPoints[['Longitude', 'Latitude','Cluster']].groupby('Cluster').mean()
+    returnedPoints = clusteredPoints[clusteredPoints['Cluster'] > -1][['Longitude', 'Latitude']].values
+    min = allData[['Longitude', 'Latitude']].min()
+    max = allData[['Longitude', 'Latitude']].max()
 
-clusteredPoints = dbscanning.display_clusters(points)
-print clusteredPoints
-returnedPoints = clusteredPoints[['Longitude', 'Latitude']].values
-min = allData[['Longitude', 'Latitude']].min()
-max = allData[['Longitude', 'Latitude']].max()
+    resolution = 300j
+    xx, yy = np.mgrid[min[0]:max[0]:resolution, min[1]:max[1]:resolution]
+    positions = np.vstack([xx.ravel(), yy.ravel()])
+    #values = np.vstack([points[:,0], points[:,1]])
+    values = np.vstack([returnedPoints[:,0], returnedPoints[:,1]])
 
-resolution = 300j
-xx, yy = np.mgrid[min[0]:max[0]:resolution, min[1]:max[1]:resolution]
-positions = np.vstack([xx.ravel(), yy.ravel()])
-#values = np.vstack([points[:,0], points[:,1]])
-values = np.vstack([returnedPoints[:,0], returnedPoints[:,1]])
+    #using sci-kit learn's kde
+    #kde = KernelDensity(kernel='exponential', bandwidth=0.0000002).fit(values.T)
+    kde = KernelDensity(kernel='exponential', bandwidth=0.001).fit(values.T)
+    #kde = KernelDensity(kernel = 'gaussian', bandwidth=0.0001).fit(values.T)
+    log_dens = kde.score_samples(positions.T)
+    otherf = np.reshape(log_dens, xx.shape)
+    if (whichseason < 4):
+	print "Finished getting exponential kde via scikit-learn for points in ", seasons[whichseason]
+    else:
+	print "Finished getting exponential kde via scikit-learn for all points"
 
-#using scipy's gaussian kde
-#kernel = gaussian_kde(values, bw_method='silverman')
-#kernel = gaussian_kde(values, bw_method=0.15)
-#f = np.reshape(kernel(positions).T, xx.shape)
-#print "Finished getting gaussian kde via scipy!"
-
-#using sci-kit learn's kde
-#kde = KernelDensity(kernel='exponential', bandwidth=0.0000002).fit(values.T)
-kde = KernelDensity(kernel='exponential', bandwidth=0.0003).fit(values.T)
-#kde = KernelDensity(kernel = 'gaussian', bandwidth=0.0001).fit(values.T)
-#kde = KernelDensity(kernel='tophat', bandwidth=0.01).fit(values.T)
-log_dens = kde.score_samples(positions.T)
-otherf = np.reshape(log_dens, xx.shape)
-print "Finished getting exponential kde via scikit-learn!"
-
-#print "Dimensions of f: ", f.shape
-#print "Start from 1/3 way down, 1/4 way over from right...", f[33,75]
-#for i in range(34):
-#    print f[33+i,75]   
-#print "Ending at 2/3 way down, 1/4 way over from right: ", f[66,75]
-
-#print "Start from 1/3 way down, 3/4 way over from right...", f[33,25]
-#for i in range(34):
-#    print f[33+i,25]   
-#print "Ending at 2/3 way down, 3/4 way over from right: ", f[66,25]
-
-#map = smopy.Map((min[1],min[0]), (max[1],max[0]), z=13, margin=.1)
-map = smopy.Map((min[1],min[0]), (max[1],max[0]), z=11, margin=.1)
-#ax2= map.show_mpl();
-x, y = map.to_pixels(points[:,1], points[:,0])
-ax2 = map.show_mpl(figsize=(8, 6))
-ax2.plot(x, y, ',b');
-
-
-#fig = plt.figure()
-#ax = fig.gca()
-#ax.set_xlim(min[0], max[0])
-#ax.set_ylim(min[1], max[1])
-
-# Contourf plot with black bars
-#cfset = ax.contourf(xx, yy, f, cmap='plasma')
-#cset = ax.contour(xx, yy, f, colors='k')
-#print "Levels: ", cset.levels
-#print "Zmin: ", cset.zmin
-#print "Zmax: ", cset.zmax
-
-# Label plot
-#ax.clabel(cset, inline=1, fontsize=10)
-#ax.set_xlabel('Longitude')
-#ax.set_ylabel('Latitude')
-#ax.plot(points[:,0], points[:,1], ',r');
-#plt.show()
+    #map = smopy.Map((min[1],min[0]), (max[1],max[0]), z=13, margin=.1)
+    map = smopy.Map((min[1],min[0]), (max[1],max[0]), z=13, margin=.1)
+    #ax2= map.show_mpl();
+    if whichseason < 4:
+    	latlongpoints = allData[allData['Season'] == whichseason][['Longitude', 'Latitude']].values
+    else:
+	latlongpoints = allData[['Longitude', 'Latitude']].values
+    x, y = map.to_pixels(latlongpoints[:,1], latlongpoints[:,0])
+    ax2 = map.show_mpl(figsize=(8, 6))
+    ax2.plot(x, y, '.b');
 
 
+    #And now for the scikit-learn one!
+    fig = plt.figure()
+    ax = fig.gca()
+    ax.set_xlim(min[0], max[0])
+    ax.set_ylim(min[1], max[1])
 
+    # Contourf plot with black bars
+    cfset = ax.contourf(xx, yy, otherf, cmap='hot')
+    cset = ax.contour(xx, yy, otherf, colors='k')
+    print "Levels: ", cset.levels
+    print "Zmin: ", cset.zmin
+    print "Zmax: ", cset.zmax
 
-#And now for the scikit-learn one!
-fig = plt.figure()
-ax = fig.gca()
-ax.set_xlim(min[0], max[0])
-ax.set_ylim(min[1], max[1])
+    # Label plot
+    ax.clabel(cset, inline=1, fontsize=10)
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    ax.set_title('Using exponential scikit-learn kernel')
+    ax.plot(latlongpoints[:,0], latlongpoints[:,1], '.b');
 
-# Contourf plot with black bars
-cfset = ax.contourf(xx, yy, otherf, cmap='plasma')
-cset = ax.contour(xx, yy, otherf, colors='k')
-print "Levels: ", cset.levels
-print "Zmin: ", cset.zmin
-print "Zmax: ", cset.zmax
+    #Set up color bar
+    cbar = plt.colorbar(cfset)
+    cbar.ax.get_yaxis().set_ticks([])
+    for j, lab in enumerate(cset.levels):
+    	cbar.ax.text(3.0, ((j+1) / 7.0) + (1/14.0), math.pow(10,lab), ha='center', va='center')
+    cbar.ax.get_yaxis().labelpad = 15
+    cbar.ax.set_ylabel('Probability density', rotation=270)
+    
+    plt.show()
 
-# Label plot
-ax.clabel(cset, inline=1, fontsize=10)
-ax.set_xlabel('Longitude')
-ax.set_ylabel('Latitude')
-ax.set_title('Using exponential scikit-learn kernel')
-ax.plot(points[:,0], points[:,1], ',r');
-plt.show()
-
+    if (whichseason < 4):
+    	directory = "data/" + seasons[whichseason] + "/"
+    	#pickle the variable f and the resolution
+    	with open(directory + "kernel.pkl", 'wb') as file:
+    	    pickle.dump(otherf, file)
+    	with open(directory + "resolution.pkl", 'wb') as file:
+    	    pickle.dump(resolution.imag, file)
+    	with open(directory + "min.pkl", 'wb') as file:
+    	    pickle.dump(min, file)
+    	with open(directory + "max.pkl", 'wb') as file:
+    	    pickle.dump(max, file)
+    	with open(directory + "levels.pkl", 'wb') as file:
+    	    pickle.dump(cset.levels, file)
+    	with open(directory + "clusteredpoints.pkl", 'wb') as file:
+    	    pickle.dump(clusteredPoints[clusteredPoints['Cluster'] > -1], file)
+	#with open(directory + "clustercenters.pkl", 'wb') as file:
+    	#    pickle.dump(clusteredPoints.groupby('Cluster').mean(), file)
 
 cnxn.close()
-
-
-#pickle the variable f and the resolution
-with open("data/kernel.pkl", 'wb') as file:
-    pickle.dump(otherf, file)
-with open("data/resolution.pkl", 'wb') as file:
-    pickle.dump(resolution.imag, file)
-with open("data/min.pkl", 'wb') as file:
-    pickle.dump(min, file)
-with open("data/max.pkl", 'wb') as file:
-    pickle.dump(max, file)
-with open("data/levels.pkl", 'wb') as file:
-    pickle.dump(cset.levels, file)
-
